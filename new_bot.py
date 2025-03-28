@@ -761,7 +761,7 @@ class NAO:
         self.__audio_path = r'/data/home/nao/audio.wav'
         self.__local_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audio.wav')
 
-        self.audio = self.session.service('ALAudioPlayer')
+        self.audio = self.session.service('ALAudioDevice')
         self.audio.setClientPreferences(self.stt.__class__.__name__, 16000, 1, 1)
         self.audio.subscribe(self.stt.__class__.__name__)
 
