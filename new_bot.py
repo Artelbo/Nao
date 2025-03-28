@@ -979,10 +979,9 @@ class NAO:
             raise ValueError('Invalid Color Type')
 
     def set_posture(self, posture: Postures, speed: Annotated[float, ValueRange(0.0, 1.0)] = 1.0) -> None:
-        # TODO: fix this
-        # if 0.0 <= speed <= 1.0:
-        #     raise ValueError('Invalid Speed')
-        self.posture.goPosture(posture.value, 1.0)
+        if not (0.0 <= speed <= 1.0):
+            raise ValueError('Invalid Speed')
+        self.posture.goPosture(posture.value, speed)
 
     def move(self, amount: Vector3) -> None:
         self.motion.setCollisionProtectionEnabled('Arms', True)
