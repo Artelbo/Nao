@@ -1,0 +1,7 @@
+google-genai
+SpeechRecognition
+thefuzz
+pyaudio
+paramiko
+audioop-lts ; python_version >= '3.13'
+pyttsx3 ; sys_platform == 'win32'

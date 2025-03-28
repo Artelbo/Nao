@@ -21,7 +21,7 @@ from colors import FC, OPS
 import readline
 
 try:
-    import pyttsx3
+    import pyttsx3  # type: ignore
 except ImportError:
     pass
 
