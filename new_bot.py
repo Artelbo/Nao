@@ -1,5 +1,7 @@
+import atexit
 import sys
 import textwrap
+import threading
 from typing import Tuple, List, Dict, TypeVar, get_type_hints, Annotated, Any, Optional, Callable, Literal
 import time
 from enum import Enum
@@ -19,6 +21,8 @@ import re
 import audioop
 from colors import FC, OPS
 import readline
+import argparse
+from dotenv import load_dotenv
 
 try:
     import pyttsx3  # type: ignore
@@ -30,6 +34,7 @@ try:
 except ImportError:
     pass
 
+load_dotenv('.env')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 locale.setlocale(locale.LC_TIME, 'it_IT')
 numberT = TypeVar('numberT', int, float)
@@ -70,7 +75,7 @@ class Memory:
             self.memory.pop(0)
 
     def get_memory_string(self) -> str:
-        return '\n\n'.join([f'Domanda: {item['question']}\nRisposta: {item['answer']}' for item in self.memory])
+        return '\n\n'.join([f'Domanda: {item["question"]}\nRisposta: {item["answer"]}' for item in self.memory])
 
 class Colors(Enum):
     OFF = 'off'
@@ -475,7 +480,6 @@ class GList(list):
 
 
 class Shell:
-
     def __init__(self, prefix: str = 'shell'):
         self.prefix = prefix
         # Stores command name -> (Command object, callback function)
@@ -490,6 +494,10 @@ class Shell:
         self.add_command(
             Command(name='help', help_doc='Show help for commands. Usage: help [command_name]'),
             self._cmd_help
+        )
+        self.add_command(
+            Command(name='run', help_doc='Execute commands from a script file. Usage: run <filename>'),
+            self._cmd_run
         )
 
     def add_command(self, command: Command, callback: Callable[[GList[str]], None]) -> None:
@@ -578,11 +586,73 @@ class Shell:
         else:
             print("Usage: help [command_name]")
 
+    def _cmd_run(self, args: GList[str]) -> None:
+        """Callback for the 'run' command. Executes commands from a file."""
+        if len(args) != 1:
+            print('Usage: run <script_filename>')
+            return
+
+        script_filename = args[0]
+        line_number = 0
+
+        if not os.path.exists(script_filename):
+            print(f'Error: Script file not found: "{script_filename}"', file=sys.stderr)
+            return
+        if not os.path.isfile(script_filename):
+            print(f'Error: "{script_filename}" is not a file.', file=sys.stderr)
+            return
+
+        try:
+            with open(script_filename, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line_number += 1
+                    line = line.strip()
+
+                    if not line or line.startswith('#'):
+                        continue
+
+                    try:
+                        script_tokens = self.__tokenize(line)
+                        command_parts = self.__stringify(script_tokens)
+                    except Exception as e:
+                        print(
+                            f'Error parsing line {line_number} in "{script_filename}": {e}',
+                            file=sys.stderr,
+                        )
+                        continue
+
+                    if not command_parts:  # Should not happen if line wasn't empty, but check anyway
+                        continue
+
+                    cmd_name = command_parts[0]
+                    cmd_args = GList(command_parts[1:])
+
+                    if cmd_name in self._commands:
+                        _, callback = self._commands[cmd_name]
+                        try:
+                            callback(cmd_args)
+                        except SystemExit:
+                           break
+                        except Exception as e:
+                            print(
+                                f'Error executing command from line {line_number} in "{script_filename}" ("{line}"): {e}',
+                                file=sys.stderr,
+                            )
+                            break
+                    else:
+                        print(f'Unknown command "{cmd_name}" on line {line_number} in "{script_filename}".')
+
+        except FileNotFoundError:
+            print(f'Error: Script file not found: "{script_filename}"', file=sys.stderr)
+        except IOError as e:
+            print(f'Error reading script file "{script_filename}": {e}', file=sys.stderr)
+        except Exception as e:
+            print(f'An unexpected error occurred while processing script "{script_filename}": {e}', file=sys.stderr)
+
     # --- Tab Completion Logic ---
     def _setup_readline(self):
-        # You might want to manage history file persistence here
-        # readline.read_history_file(...)
-        # atexit.register(readline.write_history_file, histfile)
+        readline.read_history_file('.history')
+        atexit.register(readline.write_history_file, '.history')
 
         readline.set_completer(self._completer)
         readline.set_completer_delims(' \t\n;"\'')
@@ -700,15 +770,16 @@ class NAO:
             Conversazioni Precedenti (considerale per mantenere il contesto, ma non farvi riferimento esplicito):
             {memoria}
         ''')
+        self._mic_adjusted = False
 
         self.__shell = Shell('nao/shell')
         self.__shell.add_command(
             Command(
-                name='assistant',
-                help_doc='assistant [phrase: string] [adjust: int] - Activate the AI assistant with the given string as'
-                         ' activation phrase'
+                name="assistant",
+                help_doc="assistant [phrase: string] [adjust: int] - Activate the AI assistant with the given string as"
+                " activation phrase",
             ),
-            self.__shell_assistant
+            self.__shell_assistant,
         )
         self.__shell.add_command(
             Command(
@@ -723,6 +794,13 @@ class NAO:
                 help_doc='say <phrase: string> - Says the inputted string'
             ),
             lambda args: self.say(args.get(0, 'Hello, World!'))
+        )
+        self.__shell.add_command(
+            Command(
+                name='stop',
+                help_doc='stop - Stops current and pending tts tasks'
+            ),
+            lambda args: self.stop()
         )
         self.__shell.add_command(
             Command(
@@ -802,17 +880,20 @@ class NAO:
                     case 'open': self.set_hand('right', False)
                     case 'close': self.set_hand('right', True)
             case 'leds':
-                match sub:
-                    case 'green': self.set_color(Colors.GREEN, float(args.get(2, 1)))
-                    case'red': self.set_color(Colors.GREEN, float(args.get(2, 1)))
-                    case 'blue': self.set_color(Colors.BLUE, float(args.get(2, 1)))
-                    case 'off': self.set_color(Colors.OFF)
-                    case 'on': self.set_color(Colors.ON)
-                    case _:
-                        if not bool(re.match(r'^#([0-9a-fA-F]{6})$', sub)):
-                            print('Invalid color value. Expected HEX color code.')
-                            return
-                        self.set_color(sub, float(args.get(2, 1)))
+                try:
+                    match sub:
+                        case 'green': self.set_color(Colors.GREEN, float(args.get(2, 1)))
+                        case'red': self.set_color(Colors.RED, float(args.get(2, 1)))
+                        case 'blue': self.set_color(Colors.BLUE, float(args.get(2, 1)))
+                        case 'off': self.set_color(Colors.OFF)
+                        case 'on': self.set_color(Colors.ON)
+                        case _:
+                            if not bool(re.match(r'^#([0-9a-fA-F]{6})$', sub)):
+                                print('Invalid color value. Expected HEX color code.')
+                                return
+                            self.set_color(sub, float(args.get(2, 1)))
+                except ValueError:
+                    print(f'Invalid input. Expected float: {args.get(2)}')
             case _:
                 print(f'Invalid body part. Expected one of: bot, left-hand, right-hand, leds')
 
@@ -832,7 +913,7 @@ class NAO:
             print('Could not connect in SSH')
             return
 
-        with wave.open(io.BytesIO(sftp.open(self.__audio_path, 'rb').read()), 'rb') as wf:
+        with wave.open(sftp.open(self.__audio_path, 'rb'), 'rb') as wf:  # type: ignore
              self.stt.append_audio(wf.readframes(wf.getnframes()))
 
     def __stt(self) -> str | None:
@@ -867,8 +948,14 @@ class NAO:
 
         return response_text
 
+    def __threaded_say(self, s: str) -> None:
+        try:
+            self.tts.say(s)
+        except RuntimeError:
+            pass
+
     def say(self, s: str) -> None:
-        self.tts.say(s)
+        threading.Thread(target=self.__threaded_say, args=(s, ), daemon=True).start()
 
     def stop(self) -> None:
         self.tts.stopAll()
@@ -892,9 +979,10 @@ class NAO:
             raise ValueError('Invalid Color Type')
 
     def set_posture(self, posture: Postures, speed: Annotated[float, ValueRange(0.0, 1.0)] = 1.0) -> None:
-        if 0.0 <= speed <= 1.0:
-            raise ValueError('Invalid Speed')
-        self.posture.goPosture(posture.value, speed)
+        # TODO: fix this
+        # if 0.0 <= speed <= 1.0:
+        #     raise ValueError('Invalid Speed')
+        self.posture.goPosture(posture.value, 1.0)
 
     def move(self, amount: Vector3) -> None:
         self.motion.setCollisionProtectionEnabled('Arms', True)
@@ -1085,8 +1173,17 @@ class VirtualNAO:
         )
 
         response_text = response.text
-        print('\n'.join([f' {FC.LIGHT_MAGENTA}<-{OPS.RESET} {x}' for x in textwrap.wrap(response_text, width=50, break_long_words=False)]),
-              end='\n\n')
+        print(
+            "\n".join(
+                [
+                    f" {FC.LIGHT_MAGENTA}<-{OPS.RESET} {x}"
+                    for x in textwrap.wrap(
+                        response_text, width=50, break_long_words=False
+                    )
+                ]
+            ),
+            end="\n\n",
+        )
 
         self.memory.add(r, response_text)
 
@@ -1156,46 +1253,52 @@ if __name__ == '__main__':
     BOT = '172.16.222.213', 9559
     BOT_SSH = 'nao', 'nao'
 
-    if sys.argv[1] == 'deploy':
-        if 'qi' not in globals():
-            print('Cannot run without QI lib')
-            sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('mode',
+                        help='Specify run mode',
+                        type=str,
+                        choices=['deploy', 'dev', 'auto'],)
+    sys_args = parser.parse_args()
 
-        try:
-            nao = NAO(BOT, BOT_SSH)
-        except RuntimeError:
-            sys.exit(1)
-        nao.start_shell()
-        nao.close()
-        sys.exit(0)
+    match sys_args.mode:
+        case 'deploy':
+            if 'qi' not in globals():
+                print('Cannot run without QI lib')
+                sys.exit(1)
 
-    elif sys.argv[1] == 'dev':
-        if 'pyttsx3' not in globals():
-            print('Cannot run without pyttsx3 lib')
-            sys.exit(1)
-
-        nao = VirtualNAO()
-        nao.start_shell()
-        nao.close()
-        sys.exit(0)
-
-    elif sys.argv[1] == 'auto':
-        if 'pyttsx3' in globals():
-            nao = VirtualNAO()
-
-        elif 'qi' in globals():
             try:
                 nao = NAO(BOT, BOT_SSH)
             except RuntimeError:
                 sys.exit(1)
+            nao.start_shell()
+            nao.close()
+            sys.exit(0)
 
-        else:
-            print('Cannot run without QI or pyttsx3 lib')
+        case 'dev':
+            if 'pyttsx3' not in globals():
+                print('Cannot run without pyttsx3 lib')
+                sys.exit(1)
+
+            nao = VirtualNAO()
+            nao.start_shell()
+            nao.close()
+            sys.exit(0)
+
+        case 'auto':
+            if 'pyttsx3' in globals():
+                nao = VirtualNAO()
+            elif 'qi' in globals():
+                try:
+                    nao = NAO(BOT, BOT_SSH)
+                except RuntimeError:
+                    sys.exit(1)
+            else:
+                print('Cannot run without QI or pyttsx3 lib')
+                sys.exit(1)
+
+            nao.start_shell()
+            nao.close()
+            sys.exit(0)
+        case _:
+            print('Invalid mode')
             sys.exit(1)
-
-        nao.start_shell()
-        nao.close()
-        sys.exit(0)
-    else:
-        print('Usage: python new_bot.py [auto | deploy | dev]')
-        sys.exit(1)

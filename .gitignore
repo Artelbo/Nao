@@ -1,4 +1,5 @@
 .env
+.history
 
 *.wav
 *.bin
