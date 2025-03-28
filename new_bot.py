@@ -34,9 +34,13 @@ try:
 except ImportError:
     pass
 
-load_dotenv('.env')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 locale.setlocale(locale.LC_TIME, 'it_IT')
+
+try:
+    load_dotenv('.env')
+except FileNotFoundError:
+    logging.warning('.env not found')
 numberT = TypeVar('numberT', int, float)
 
 
@@ -204,7 +208,7 @@ class STT:
                  silence_after_speech_threshold: float = 1.0):
         self.recognizer = sr.Recognizer()
         self.recognizer.energy_threshold = 300
-        self.recognizer.dynamic_energy_threshold = True
+        self.recognizer.dynamic_energy_threshold = False
 
         self.audio_data: List[Tuple[float, bytes]] = []
         self.sample_rate: int = sample_rate
@@ -1172,17 +1176,8 @@ class VirtualNAO:
         )
 
         response_text = response.text
-        print(
-            "\n".join(
-                [
-                    f" {FC.LIGHT_MAGENTA}<-{OPS.RESET} {x}"
-                    for x in textwrap.wrap(
-                        response_text, width=50, break_long_words=False
-                    )
-                ]
-            ),
-            end="\n\n",
-        )
+        print('\n'.join([f' {FC.LIGHT_MAGENTA}<-{OPS.RESET} {x}' for x in textwrap.wrap(response_text, width=50, break_long_words=False)]),
+              end='\n\n',)
 
         self.memory.add(r, response_text)
 
@@ -1248,16 +1243,45 @@ class VirtualNAO:
         pass
 
 
-if __name__ == '__main__':
-    BOT = '172.16.222.213', 9559
-    BOT_SSH = 'nao', 'nao'
-
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('mode',
                         help='Specify run mode',
                         type=str,
-                        choices=['deploy', 'dev', 'auto'],)
+                        choices=['deploy', 'dev', 'auto'])
+    parser.add_argument('-a', '--address',
+                        help='Bot IPv4 address',
+                        type=str,
+                        default='172.16.222.213')
+    parser.add_argument('-p', '--port',
+                        help='Bot proto port',
+                        type=int,
+                        default=9559)
+    parser.add_argument('-s', '--ssh',
+                        help='Bot SSH user and password',
+                        type=str,
+                        default='nao:nao')
+    parser.add_argument('--log-level',
+                        help='Sets the log level',
+                        type=str,
+                        default='debug',
+                        choices=['debug', 'info', 'warning', 'error'])
     sys_args = parser.parse_args()
+
+    BOT: Tuple[str, int] = sys_args.address, sys_args.port
+    if len(sys_args.ssh.split(':', 1)) <= 1:
+        print('Invalid --ssh value')
+        sys.exit(1)
+    SSH_USER, SSH_PASS = sys_args.ssh.split(':', 1)
+    BOT_SSH: Tuple[str, str] = SSH_USER, SSH_PASS
+    del SSH_USER, SSH_PASS
+
+    logging.getLogger().setLevel({
+        'debug': logging.DEBUG,
+        'info': logging.INFO,
+        'warning': logging.WARNING,
+        'error': logging.ERROR
+    }[sys_args.log_level])
 
     match sys_args.mode:
         case 'deploy':
