@@ -23,6 +23,7 @@ from colors import FC, OPS
 import readline
 import argparse
 from dotenv import load_dotenv
+import numpy as np
 
 try:
     import pyttsx3  # type: ignore
@@ -235,9 +236,29 @@ class STT:
             # audioop.rms requires sample width (1, 2, or 4 bytes)
             return audioop.rms(audio_chunk, self.sample_width)
         except Exception as e:
-            logging.error(f"Error calculating RMS: {e}. Chunk length: {len(audio_chunk)}, Sample width: {self.sample_width}")
+            logging.error(
+                f"Error calculating RMS: {e}. Chunk length: {len(audio_chunk)}, Sample width: {self.sample_width}"
+            )
             return 0.0 # Return 0 energy on error
 
+    def direct_subscribe(self, session: qi.Session) -> None:
+        session.registerService(self.__class__.__name__, self)
+
+    def process(self, nb_channels, nbr_samples_by_channel, buffer, timestamp):
+        """DO NOT USE THIS FUNCTION DIRECTLY"""
+        timestamp = time.time()
+        self.audio_data.append((timestamp, buffer))
+
+        chunk_energy = self._calculate_chunk_energy(buffer)
+        is_speech = chunk_energy > self.recognizer.energy_threshold
+
+        if is_speech:
+            self.speech_detected_since_last_transcription = True
+            self.time_of_last_speech = timestamp
+
+        # Remove old audio data exceeding max_duration
+        while self.audio_data and (timestamp - self.audio_data[0][0]) > self.max_duration:
+            self.audio_data.pop(0)
 
     def append_audio(self, audio_chunk: bytes) -> None:
         if not isinstance(audio_chunk, bytes):
@@ -362,7 +383,7 @@ class STT:
 
 
         if not combined_audio_bytes:
-            logging.warning("Not enough audio data in buffer for ambient noise adjustment.")
+            logging.warning('Not enough audio data in buffer for ambient noise adjustment.')
             return
 
         wav_fp = io.BytesIO()
@@ -730,6 +751,8 @@ class NAO:
         # self.session = app.session
 
         # ---- services -----
+        self.stt = STT(max_duration=21)
+
         self.tts = self.session.service('ALTextToSpeech')
         self.tts.setLanguage('Italian')
         self.tts.setParameter('pitchShift', 1)
@@ -738,13 +761,16 @@ class NAO:
         self.__audio_path = r'/data/home/nao/audio.wav'
         self.__local_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audio.wav')
 
+        self.audio = self.session.service('ALAudioPlayer')
+        self.audio.setClientPreferences(self.stt.__class__.__name__, 16000, 1, 1)
+        self.audio.subscribe(self.stt.__class__.__name__)
+
         self.leds = self.session.service('ALLeds')
         self.motion = self.session.service('ALMotion')
         self.posture = self.session.service('ALRobotPosture')
         self.system = self.session.service('ALSystem')
         # -------------------
 
-        self.stt = STT(max_duration=21)
         self.memory = Memory()
         self.activation_string = 'hey now' # nao
         self.activation_response = 'Si?'
@@ -838,7 +864,6 @@ class NAO:
 
         if not self._mic_adjusted:
             print(f'Adjusting ambient noise ({adjust}s)')
-            self.__record(adjust)
             self.stt.adjust_ambient(adjust)
             self._mic_adjusted = True
 
@@ -853,7 +878,6 @@ class NAO:
             return
 
         print(f'Adjusting ambient noise ({duration}s)')
-        self.__record(duration)
         self.stt.adjust_ambient(duration)
         self._mic_adjusted = True
 
@@ -901,27 +925,7 @@ class NAO:
             case _:
                 print(f'Invalid body part. Expected one of: bot, left-hand, right-hand, leds')
 
-
-    def __record(self, duration: float) -> None:
-        self.recorder.stopMicrophonesRecording()
-        self.recorder.startMicrophonesRecording(self.__audio_path, 'wav', 16000, [0, 0, 1, 0])
-        time.sleep(duration)
-        self.recorder.stopMicrophonesRecording()
-
-        transport = self.ssh_client.get_transport()
-        if (transport is None) or not transport.is_active():
-            self.ssh_client.connect(self.bot[0], port=22, username=self.ssh_user[0], password=self.ssh_user[1])
-
-        sftp = self.ssh_client.get_transport().open_sftp_client() if self.ssh_client.get_transport() else None
-        if sftp is None:
-            print('Could not connect in SSH')
-            return
-
-        with wave.open(sftp.open(self.__audio_path, 'rb'), 'rb') as wf:  # type: ignore
-             self.stt.append_audio(wf.readframes(wf.getnframes()))
-
     def __stt(self) -> str | None:
-        self.__record(3)
         transcribed = self.stt.transcribe()
         if transcribed.successful:
             return transcribed.text
