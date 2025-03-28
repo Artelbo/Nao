@@ -1,0 +1,16 @@
+.env
+
+*.wav
+*.bin
+*.zip
+*.7z
+*.tar.gz
+
+venv
+.idea
+.git
+__pycache__
+
+vosk-model-it-0.22
+vosk-model-small-it-0.22
+models
