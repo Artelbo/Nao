@@ -239,8 +239,8 @@ class Shell:
              return None
 
     def __setup_readline(self):
-        readline.read_history_file('.history')
-        atexit.register(readline.write_history_file, '.history')
+        readline.read_history_file('../.history')
+        atexit.register(readline.write_history_file, '../.history')
 
         readline.set_completer(self.__completer)
         readline.set_completer_delims(' \t\n;"\'')

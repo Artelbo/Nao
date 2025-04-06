@@ -1,16 +1,12 @@
 import sys
-import threading
-from typing import Tuple, List, Dict, Annotated, Any, Optional, Callable, Literal
-import time
+from typing import Tuple
 import os
 import logging
 import locale
-import argparse
 from dotenv import load_dotenv
-from protolib.server import MultiConnectionServer, ProtoSocketWrapper
-from config import setup_logging, load_config, load_locale
-from nao import NAO
-from virtualnao import VirtualNAO
+from libs.config import setup_logging, load_config, load_locale
+from libs.nao import NAO
+from libs.virtualnao import VirtualNAO
 
 # Initial config
 setup_logging('log.yaml')
