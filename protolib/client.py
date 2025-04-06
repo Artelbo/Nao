@@ -1,5 +1,5 @@
 import socket
-from proto3 import proto_decode, proto_encode, Encodings, Connection
+from .proto3 import proto_decode, proto_encode, Encodings, Connection
 import hashlib
 from typing import Any, Dict, Tuple, Callable
 import time
@@ -28,20 +28,22 @@ def make_request(payload: bytes,
 
 
 class ProtoSocketWrapper:
-    def __init__(self, sock: socket.socket, endpoint: str, encoding: Encodings):
+    def __init__(self, sock: socket.socket, endpoint: str, encoding: Encodings, amount: int):
         self.__sock = sock
         self.__endpoint = endpoint
         self.__encoding = encoding
+        self.__amount = amount
 
     def send(self, payload: bytes, headers: Dict[str, Any] = None) -> None:
         if headers is None:
-            headers = {}
+            headers = {'Connection': Connection.DUPLEX.value}
 
-        data = proto_encode(**make_request(payload, self.__endpoint, headers, encoding=self.__encoding))
+        data = make_request(payload, self.__endpoint, headers, encoding=self.__encoding)
+        data = proto_encode(**data)
         self.__sock.sendall(data)
 
     def receive(self) -> Tuple[bytes, Dict[str, Any], Encodings]:
-        data = self.__sock.recv(1024)
+        data = self.__sock.recv(self.__amount)
         headers, payload, encoding = proto_decode(data)
         return payload, headers, encoding
 
@@ -88,13 +90,14 @@ class Session:
 
     def stream(self,
                callback: Callable[[ProtoSocketWrapper], None],
-               endpoint: str, payload: bytes = b'', headers: Dict[str, Any] = None):
+               endpoint: str, payload: bytes = b'', headers: Dict[str, Any] = None,
+               recv_amount: int = 1024):
         if headers is None:
             headers = {}
 
         headers['Connection'] = Connection.DUPLEX.value
         encoded_request = proto_encode(**make_request(payload, endpoint, headers,
-                                                      encoding=Encodings.GZIP))
+                                                      encoding=Encodings.PLAIN))
 
         if not self.connected:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -103,7 +106,7 @@ class Session:
 
         self.sock.sendall(encoded_request)
 
-        wrapper = ProtoSocketWrapper(self.sock, endpoint, Encodings.GZIP)
+        wrapper = ProtoSocketWrapper(self.sock, endpoint, Encodings.PLAIN, recv_amount)
         callback(wrapper)
 
         self.connected = False

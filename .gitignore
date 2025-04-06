@@ -24,3 +24,5 @@ stt_complete
 
 logs
 *.log
+
+tests

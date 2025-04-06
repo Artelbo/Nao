@@ -5,7 +5,8 @@ from logging import getLogger, Logger
 import audioop
 import time
 import wave
-from b_types import MoreThan
+from .b_types import MoreThan
+import io
 
 
 @dataclass(frozen=True)
@@ -195,18 +196,32 @@ class STT:
             self.__logger.warning('Not enough audio data in buffer for ambient noise adjustment.')
             return
 
-        audio_data_obj = sr.AudioData(combined_audio_bytes, self.sample_rate, self.sample_width)
+        wav_fp = io.BytesIO()
         try:
-            original_threshold = self.recognizer.energy_threshold
-            self.recognizer.adjust_for_ambient_noise(audio_data_obj, duration=duration)
-            self.__logger.info(
-                f'Adjusted for ambient noise. Energy threshold changed from {original_threshold:.2f} to '
-                f'{self.recognizer.energy_threshold:.2f}'
-            )
-            del original_threshold
+            with wave.open(wav_fp, 'wb') as wf:
+                wf.setnchannels(self.channels)
+                wf.setsampwidth(self.sample_width)
+                wf.setframerate(self.sample_rate)
+                wf.writeframes(combined_audio_bytes)
+            wav_fp.seek(0)
+
+            with sr.AudioFile(wav_fp) as source:
+                try:
+                    original_threshold = self.recognizer.energy_threshold
+                    self.recognizer.adjust_for_ambient_noise(source,
+                                                             duration=duration)
+                    self.__logger.info(
+                        f'Adjusted for ambient noise. Energy threshold changed from {original_threshold:.2f} to '
+                        f'{self.recognizer.energy_threshold:.2f}')
+                except Exception as e:
+                    self.__logger.error(f'Error during ambient noise adjustment: {e}')
+
+            self.clear_audio()
+
+        except wave.Error as e:
+            self.__logger.error(f'Failed to create in-memory WAV for ambient adjustment: {e}')
         except Exception as e:
-            self.__logger.error(f'Error during ambient noise adjustment: {e}')
-        self.clear_audio()
+            self.__logger.error(f'An unexpected error occurred in adjust_ambient: {e}')
 
     def transcribe(self) -> STTResponse:
         if not self.audio_data:
@@ -237,6 +252,7 @@ class STT:
         self.__logger.info(f'Transcribing {total_duration:.2f}s of audio.')
 
         audio_data_obj = sr.AudioData(combined_audio_bytes, self.sample_rate, self.sample_width)
+
         try:
             text: str = self.recognizer.recognize_google(audio_data_obj, language=self.language)  # type: ignore
             self.__logger.debug(f"Raw transcription result: '{text}'")

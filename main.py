@@ -4,9 +4,11 @@ import os
 import logging
 import locale
 from dotenv import load_dotenv
+import threading
 from libs.config import setup_logging, load_config, load_locale
 from libs.nao import NAO
-from libs.virtualnao import VirtualNAO
+from libs.virtualnao import VirtualNAO, TestClient
+
 
 # Initial config
 setup_logging('log.yaml')
@@ -73,8 +75,13 @@ if __name__ == '__main__':
 
         case 'dev':
             nao = VirtualNAO(locale_data=locale_data)
+
+            client = TestClient()
+            threading.Thread(target=client.start, daemon=True).start()
+
             nao.start_shell()
             nao.close()
+
             sys.exit(0)
         case _:
             print('Invalid mode')

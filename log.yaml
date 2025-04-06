@@ -36,7 +36,7 @@ loggers:
       - 'file'
     propagate: false
   stt:
-    level: 'INFO'
+    level: 'DEBUG'
     handlers:
       - 'console'
       - 'file'
@@ -48,6 +48,11 @@ loggers:
     propagate: false
   shell:
     level: 'WARNING'
+    handlers:
+      - 'file'
+    propagate: false
+  server:
+    level: 'DEBUG'
     handlers:
       - 'file'
     propagate: false

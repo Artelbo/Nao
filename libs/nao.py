@@ -2,16 +2,16 @@ from logging import Logger, getLogger
 from typing import Tuple, Annotated, Literal, Dict
 import paramiko
 import os
-from stt import STT
-from builtin_shell import Shell, Command, GList
-from ai import Memory
+from .stt import STT
+from .builtin_shell import Shell, Command, GList
+from .ai import Memory
 import textwrap
 from google import genai
 from google.genai import types
-from b_types import Vector3, Colors, Color, ValueRange
-from robot_specific import Postures, LedPosition
+from .b_types import Vector3, Colors, Color, ValueRange
+from .robot_specific import Postures, LedPosition
 import re
-from colors import FC, OPS
+from .colors import FC, OPS
 import time
 import threading
 from thefuzz import fuzz

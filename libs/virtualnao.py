@@ -1,21 +1,28 @@
 from logging import Logger, getLogger
 from typing import Dict, Any
 import os
-from stt import STT
-from builtin_shell import Shell, Command, GList
-from ai import Memory
+from .stt import STT
+from .builtin_shell import Shell, Command, GList
+from .ai import Memory
 import textwrap
 from google import genai
 from google.genai import types
-from b_types import Colors, Color
-from colors import FC, OPS
+from .b_types import Colors, Color
+from .colors import FC, OPS
 import time
 import threading
 from thefuzz import fuzz
 from protolib.server import MultiConnectionServer, ProtoSocketWrapper
+from protolib.client import Session
+import queue
 
 try:
     import pyttsx3  # type: ignore
+except ImportError:
+    pass
+
+try:
+    import pyaudio  # type: ignore
 except ImportError:
     pass
 
@@ -41,8 +48,8 @@ class VirtualNAO:
         )
         self.__shell.add_command(
             Command(
-                name='microphone.adjust',
-                help_doc='microphone.adjust <duration: int> - Adjust microphone input on ambient noise'
+                name='microphone-adjust',
+                help_doc='microphone-adjust <duration: int> - Adjust microphone input on ambient noise'
             ),
             self.__shell_microphone_adjust
         )
@@ -56,11 +63,16 @@ class VirtualNAO:
 
         self.stt = STT(max_duration=15, silence_after_speech_threshold=1)
         self.record_duration = 1
-        self.server = MultiConnectionServer('0.0.0.0')
+        self.server = MultiConnectionServer('0.0.0.0', 7942, recv_amount=10240)
 
         @self.server.route('send/audio')
         def receive_data(headers: Dict[str, Any], payload: bytes, sock: ProtoSocketWrapper):
-            self.stt.append_audio(payload)
+            data, headers, _ = sock.receive()
+            self.__logger.debug(f'Received audio data: {len(data)}')
+            self.stt.append_audio(data)
+
+        self.__logger.info('Starting server...')
+        threading.Thread(target=self.server.start, daemon=True).start()
 
         self.tts = pyttsx3.init()
         self.voices = self.tts.getProperty('voices')
@@ -109,9 +121,9 @@ class VirtualNAO:
         print(f' {FC.LIGHT_YELLOW}->{OPS.RESET} {r}')
 
         modified_system_prompt = self.system_prompt.format(
-            ora=time.strftime('%H:%M:%S'),
-            data=time.strftime('%A, %d %B %Y'),
-            memoria=self.memory.get_memory_string()
+            hour=time.strftime('%H:%M:%S'),
+            date=time.strftime('%A, %d %B %Y'),
+            memory=self.memory.get_memory_string()
         )
 
         response = self.ai_client.models.generate_content(
@@ -189,3 +201,40 @@ class VirtualNAO:
 
     def close(self):
         pass
+
+
+class TestClient:
+    def __init__(self, host: str = '127.0.0.1', port: int = 7942) -> None:
+        self.session = Session((host, port))
+        self.chunk = 1024
+        self.format = pyaudio.paInt16
+        self.channels = 1
+        self.sample_rate = 16000
+
+        self.audio_queue = queue.Queue()
+        self.running = True
+
+        audio = pyaudio.PyAudio()
+        self.stream = audio.open(format=self.format,
+                                 channels=self.channels,
+                                 rate=self.sample_rate,
+                                 input=True,
+                                 frames_per_buffer=self.chunk)
+
+    def start(self):
+        threading.Thread(target=self.__record_audio, daemon=True).start()
+        self.session.stream(self.__stream_callback, 'send/audio')
+
+    def __record_audio(self):
+        while self.running:
+            data = self.stream.read(self.chunk, exception_on_overflow=False)
+            self.audio_queue.put(data)
+
+    def __stream_callback(self, sock: ProtoSocketWrapper):
+        while self.running:
+            data = self.audio_queue.get()
+            if data:
+                sock.send(data)
+
+            while self.audio_queue.qsize() < 5:
+                time.sleep(0.01)

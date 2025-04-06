@@ -31,9 +31,10 @@ def make_response(payload: bytes,
 
 
 class ProtoSocketWrapper:
-    def __init__(self, sock: socket.socket, encoding: Encodings):
+    def __init__(self, sock: socket.socket, encoding: Encodings, amount: int):
         self.__sock = sock
         self.__encoding = encoding
+        self.__amount = amount
 
     def send(self, payload: bytes, headers: Dict[str, Any] = None) -> None:
         if headers is None:
@@ -43,7 +44,7 @@ class ProtoSocketWrapper:
         self.__sock.sendall(data)
 
     def receive(self) -> Tuple[bytes, Dict[str, Any], Encodings]:
-        data = self.__sock.recv(1024)
+        data = self.__sock.recv(self.__amount)
         headers, payload, encoding = proto_decode(data)
         return payload, headers, encoding
 
@@ -107,7 +108,7 @@ class SingleConnectionServer:
                     continue
 
                 if connection == connection.DUPLEX:
-                    wrapper = ProtoSocketWrapper(client_sock, Encodings.GZIP)
+                    wrapper = ProtoSocketWrapper(client_sock, Encodings.PLAIN, self.recv_amount)
                     self.routes.get(endpoint)(headers, payload, wrapper)
                 else:
                     response_headers, response_payload, status = self.routes.get(endpoint)(headers, payload)
@@ -124,11 +125,12 @@ class SingleConnectionServer:
 
 class MultiConnectionServer:
     def __init__(self, ip: str, port: int = 7942, recv_amount: int = 1024):
+        self.__logger = logging.getLogger('server')
+
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind((ip, port))
         self.recv_amount = recv_amount
         self.routes: Dict[str, Callable] = {}
-        self.logger = logging.getLogger()
 
     def route(self, route: str):
         def decorator(
@@ -137,28 +139,28 @@ class MultiConnectionServer:
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    self.logger.exception("Error in route handler:")
+                    self.__logger.exception("Error in route handler:")
                     return {}, b'', 500
             self.routes[route] = wrapper
             return func
         return decorator
 
     def handle_client(self, client_sock, client_addr):
-        self.logger.info(f'Client connected: {client_addr}')
+        self.__logger.info(f'Client connected: {client_addr}')
 
         keep_alive = True
         while keep_alive:
             try:
                 data = client_sock.recv(self.recv_amount)
             except (ConnectionAbortedError, ConnectionResetError):
-                self.logger.error(f'Client disconnected forcefully: {client_addr}')
+                self.__logger.error(f'Client disconnected forcefully: {client_addr}')
                 break
 
             if len(data) == 0:
                 break
 
             headers, payload, _ = proto_decode(data)
-            self.logger.debug(f'Received message (size: {len(payload)}, headers: {headers})')
+            self.__logger.debug(f'Received message (size: {len(payload)}, headers: {headers})')
 
             connection = Connection(headers.get('Connection', 'close'))
             if connection == Connection.CLOSE:
@@ -166,30 +168,30 @@ class MultiConnectionServer:
 
             endpoint: str | None = headers.get('Endpoint', None)
             if endpoint is None:
-                self.logger.warning('Missing endpoint in request headers')
+                self.__logger.warning('Missing endpoint in request headers')
                 response_data = proto_encode(**make_response(b'Missing Headers', 400))
                 client_sock.sendall(response_data)
                 continue
 
             if connection == Connection.DUPLEX:
-                wrapper = ProtoSocketWrapper(client_sock, Encodings.GZIP)
+                wrapper = ProtoSocketWrapper(client_sock, Encodings.PLAIN, self.recv_amount)
                 try:
                     self.routes.get(endpoint)(headers, payload, wrapper)
                 except Exception as e:
-                    self.logger.exception(f'Error handling duplex connection: {e}')
+                    self.__logger.exception(f'Error handling duplex connection: {e}')
             else:
                 try:
                     response_headers, response_payload, status = self.routes.get(endpoint)(headers, payload)
                     response_data = proto_encode(**make_response(response_payload, status, response_headers, encoding=Encodings.GZIP))
                     client_sock.sendall(response_data)
                 except Exception as e:
-                    self.logger.exception(f'Error handling request: {e}')
+                    self.__logger.exception(f'Error handling request: {e}')
 
-        self.logger.info(f'Client disconnected: {client_addr}')
+        self.__logger.info(f'Client disconnected: {client_addr}')
         client_sock.close()
 
     def start(self):
-        self.logger.info(f'Server started on {self.sock.getsockname()}')
+        self.__logger.info(f'Server started on {self.sock.getsockname()}')
 
         self.sock.listen(5)
 
@@ -202,7 +204,7 @@ class MultiConnectionServer:
                 client_thread.start()
 
         except KeyboardInterrupt:
-            self.logger.info('Server stopped')
+            self.__logger.info('Server stopped')
         finally:
             self.sock.close()
 
