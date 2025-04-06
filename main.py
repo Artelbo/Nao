@@ -1,102 +1,85 @@
-from google.genai import types
-from typing import List, Dict, Any
-from stt import STT, SimpleService, Services
-from stt.base import Languages
-import speech_recognition as sr
-from thefuzz import fuzz
-import os
-from google import genai
-import textwrap
+import sys
+import threading
+from typing import Tuple, List, Dict, Annotated, Any, Optional, Callable, Literal
 import time
+import os
+import logging
 import locale
+import argparse
+from dotenv import load_dotenv
+from protolib.server import MultiConnectionServer, ProtoSocketWrapper
+from config import setup_logging, load_config, load_locale
+from nao import NAO
+from virtualnao import VirtualNAO
 
-locale.setlocale(locale.LC_TIME, Languages.ITALIAN_ITALY.value.replace('-', '_'))
+# Initial config
+setup_logging('log.yaml')
+logger = logging.getLogger('main')
 
-start = 'leonardo'
-client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
-system_prompt = '''
-Sei Nao, un robot che risponde grazie a Google Gemini, sei stato programmato grazie a Python e la mente di 5 geni.
-Le risposte che fornisci devono essere in testo semplice, senza alcuna formattazione stilistica. Evita l'uso di grassetto, corsivo, sottolineato, elenchi puntati o numerati, parentesi, o qualsiasi altro tipo di formattazione.
-Fornisci risposte chiare e concise, esclusivamente in testo puro.
-Le risposte devono essere brevi e riassuntive.
-Ricorda di riferiti a me (io) come tu, sempre, eccetto quando puoi sott'intenderlo.
-Se ti viene posta una domanda non pertinente puoi rispondere con: "Non ho capito, potresti ripetere?"
-Ora locale: {ora}
-Data locale: {data}
+# Config
+config, parser = load_config('config.yaml')
+# -- additional parser arguments
+parser.add_argument('mode',
+                    help='Specify run mode.',
+                    type=str,
+                    choices=['deploy', 'dev'])
+parser.add_argument('-a', '--address',
+                    help='Bot IPv4 address.',
+                    type=str,
+                    default='172.16.222.213')
+parser.add_argument('-p', '--port',
+                    help='Bot proto port.',
+                    type=int,
+                    default=9559)
+parser.add_argument('-s', '--ssh',
+                    help='Bot SSH user and password.',
+                    type=str,
+                    default='nao:nao')
+# --
+args = parser.parse_args()
+config.update({k: v for k, v in vars(args).items() if v is not None})
 
-Conversazioni Precedenti:
----
-{memoria}
----
-'''
+try:
+    locale.setlocale(locale.LC_TIME, config['locale'])
+    locale_data = load_locale(os.path.join(os.getcwd(), 'locales', config['locale']+'.json'))
+except Exception:
+    logger.critical(f"Could not set locale to '{config['locale']}'.")
+    exit(1)
 
-class Memory:
-    def __init__(self, capacity=5):
-        self.capacity = capacity
-        self.memory = []
+try:
+    load_dotenv('.env')
+except FileNotFoundError:
+    logger.warning('.env not found')
 
-    def add(self, q, a) -> None:
-        self.memory.append({'question': q, 'answer': a})
-        if len(self.memory) > self.capacity:
-            self.memory.pop(0)
-
-    def get_memory_string(self) -> str:
-        return '\n\n'.join([f'Domanda: {item['question']}\nRisposta: {item['answer']}' for item in self.memory])
-
-memory = Memory()
-
-def answer(r: str) -> None:
-    print(f' -> {r}')
-
-    memory_string = memory.get_memory_string()
-
-    # Include memory in the system prompt
-    modified_system_prompt = system_prompt.format(
-        ora=time.strftime('%H:%M:%S'),
-        data=time.strftime('%A, %d %B %Y'),
-        memoria=memory_string
-    )
+if not os.path.exists('.history'):
+    with open('.history', 'w') as f:
+        logger.warning('.history file not found, creating...')
 
 
-    response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=r,
-        config=types.GenerateContentConfig(
-            system_instruction=modified_system_prompt
-        )
-    )
+if __name__ == '__main__':
+    BOT: Tuple[str, int] = config['address'], config['port']
+    if len(config['ssh'].split(':', 1)) <= 1:
+        print('Invalid --ssh value')
+        sys.exit(1)
+    SSH_USER, SSH_PASS = config['ssh'].split(':', 1)
+    BOT_SSH: Tuple[str, str] = SSH_USER, SSH_PASS
+    del SSH_USER, SSH_PASS
 
-    response_text = response.text
-    print('\n'.join([f' <- {x}' for x in textwrap.wrap(response_text, width=50, break_long_words=False)]),
-          end='\n\n')
+    match config['mode']:
+        case 'deploy':
+            try:
+                nao = NAO(BOT, BOT_SSH, locale_data=locale_data)
+            except RuntimeError:
+                sys.exit(1)
+            nao.start_shell()
+            nao.close()
+            sys.exit(0)
 
-    memory.add(r, response_text)
-
-with sr.Microphone() as source:
-    print('Loading, please wait...')
-    stt = STT(source, SimpleService.BestOnline)
-    print('Adjusting for ambient noise')
-    stt.adjust_ambient()
-    print('Ready to start speaking...')
-    while True:
-        for text in stt.transcribe(None):
-            t = text.lower().replace('ehi', 'hey', 1)
-            # print(f'[] {t}')
-            if not (fuzz.ratio(t[0:len(start)], start.lower()) > 50):
-                continue
-            t = t[len(start)+1:].strip()
-            if t.startswith(tuple(',.;:')):
-                t = t[1:]
-                t = t.strip()
-            if len(t) <= 0:
-                break
-            answer(t)
-
-        print('Si?')
-        for text in stt.transcribe(None):
-            t = text.lower()
-            if len(t.strip()) <= 0:
-                continue
-
-            answer(t)
-            break
+        case 'dev':
+            nao = VirtualNAO(locale_data=locale_data)
+            nao.start_shell()
+            nao.close()
+            sys.exit(0)
+        case _:
+            print('Invalid mode')
+            sys.exit(1)

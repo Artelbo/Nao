@@ -17,3 +17,10 @@ vosk-model-small-it-0.22
 models
 
 readme.md
+bot_main.py
+other_requirements.txt
+ailib
+stt_complete
+
+logs
+*.log

@@ -3,10 +3,8 @@ import logging
 import threading
 import time
 from typing import Any, Tuple, Callable, Dict
-from proto3 import proto_decode, proto_encode, Encodings, Connection
+from .proto3 import proto_decode, proto_encode, Encodings, Connection
 import hashlib
-
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def make_response(payload: bytes,
@@ -130,6 +128,7 @@ class MultiConnectionServer:
         self.sock.bind((ip, port))
         self.recv_amount = recv_amount
         self.routes: Dict[str, Callable] = {}
+        self.logger = logging.getLogger()
 
     def route(self, route: str):
         def decorator(
@@ -138,28 +137,28 @@ class MultiConnectionServer:
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    logging.exception("Error in route handler:")
+                    self.logger.exception("Error in route handler:")
                     return {}, b'', 500
             self.routes[route] = wrapper
             return func
         return decorator
 
     def handle_client(self, client_sock, client_addr):
-        logging.info(f'Client connected: {client_addr}')
+        self.logger.info(f'Client connected: {client_addr}')
 
         keep_alive = True
         while keep_alive:
             try:
                 data = client_sock.recv(self.recv_amount)
             except (ConnectionAbortedError, ConnectionResetError):
-                logging.error(f'Client disconnected forcefully: {client_addr}')
+                self.logger.error(f'Client disconnected forcefully: {client_addr}')
                 break
 
             if len(data) == 0:
                 break
 
             headers, payload, _ = proto_decode(data)
-            logging.debug(f'Received message size:{len(payload)} headers:{headers}')
+            self.logger.debug(f'Received message (size: {len(payload)}, headers: {headers})')
 
             connection = Connection(headers.get('Connection', 'close'))
             if connection == Connection.CLOSE:
@@ -167,7 +166,7 @@ class MultiConnectionServer:
 
             endpoint: str | None = headers.get('Endpoint', None)
             if endpoint is None:
-                logging.warning('Missing endpoint in request headers')
+                self.logger.warning('Missing endpoint in request headers')
                 response_data = proto_encode(**make_response(b'Missing Headers', 400))
                 client_sock.sendall(response_data)
                 continue
@@ -177,36 +176,39 @@ class MultiConnectionServer:
                 try:
                     self.routes.get(endpoint)(headers, payload, wrapper)
                 except Exception as e:
-                    logging.exception(f"Error handling duplex connection: {e}")
+                    self.logger.exception(f'Error handling duplex connection: {e}')
             else:
                 try:
                     response_headers, response_payload, status = self.routes.get(endpoint)(headers, payload)
                     response_data = proto_encode(**make_response(response_payload, status, response_headers, encoding=Encodings.GZIP))
                     client_sock.sendall(response_data)
                 except Exception as e:
-                    logging.exception(f"Error handling request: {e}")
+                    self.logger.exception(f'Error handling request: {e}')
 
-        logging.info(f'Client disconnected: {client_addr}')
+        self.logger.info(f'Client disconnected: {client_addr}')
         client_sock.close()
 
     def start(self):
-        logging.info(f'Server started on {self.sock.getsockname()}')
+        self.logger.info(f'Server started on {self.sock.getsockname()}')
 
-        self.sock.listen(5)  # Allow up to 5 pending connections
+        self.sock.listen(5)
 
         try:
             while True:
                 client_sock, client_addr = self.sock.accept()
-                client_thread = threading.Thread(target=self.handle_client, args=(client_sock, client_addr))
+                client_thread = threading.Thread(
+                    target=self.handle_client, args=(client_sock, client_addr)
+                )
                 client_thread.start()
 
         except KeyboardInterrupt:
-            logging.info('Server stopped')
+            self.logger.info('Server stopped')
         finally:
             self.sock.close()
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     server = MultiConnectionServer('127.0.0.1', 7942)
 
     @server.route('hello/world')
