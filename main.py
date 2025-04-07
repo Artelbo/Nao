@@ -1,13 +1,24 @@
 import sys
+
+if sys.version_info < (3, ):
+    print("This script can't run on python 2.x")
+    sys.exit(1)
+
 from typing import Tuple
 import os
 import logging
 import locale
 from dotenv import load_dotenv
 import threading
-from libs.config import setup_logging, load_config, load_locale
 from libs.nao import NAO
 from libs.virtualnao import VirtualNAO, TestClient
+
+print(f'Running on python ({".".join(sys.version_info)})')
+
+if sys.version_info <= (3, 9):
+    from libs.config_py39compatible import setup_logging, load_config, load_locale
+else:
+    from libs.config import setup_logging, load_config, load_locale
 
 
 # Initial config
@@ -63,26 +74,24 @@ if __name__ == '__main__':
     BOT_SSH: Tuple[str, str] = SSH_USER, SSH_PASS
     del SSH_USER, SSH_PASS
 
-    match config['mode']:
-        case 'deploy':
-            try:
-                nao = NAO(BOT, BOT_SSH, locale_data=locale_data)
-            except RuntimeError:
-                sys.exit(1)
-            nao.start_shell()
-            nao.close()
-            sys.exit(0)
-
-        case 'dev':
-            nao = VirtualNAO(locale_data=locale_data)
-
-            client = TestClient()
-            threading.Thread(target=client.start, daemon=True).start()
-
-            nao.start_shell()
-            nao.close()
-
-            sys.exit(0)
-        case _:
-            print('Invalid mode')
+    if config['mode'] == 'deploy':
+        try:
+            nao = NAO(BOT, BOT_SSH, locale_data=locale_data)
+        except RuntimeError:
             sys.exit(1)
+        nao.start_shell()
+        nao.close()
+        sys.exit(0)
+    elif config['mode'] == 'dev':
+        nao = VirtualNAO(locale_data=locale_data)
+
+        client = TestClient()
+        threading.Thread(target=client.start, daemon=True).start()
+
+        nao.start_shell()
+        nao.close()
+
+        sys.exit(0)
+    else:
+        logger.critical('Invalid mode')
+        sys.exit(1)

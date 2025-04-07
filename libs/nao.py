@@ -161,51 +161,47 @@ class NAO:
             print('Please provide a sub-command for the body part.')
             return
 
-        match body_part:
-            case 'bot':
-                match sub:
-                    case 'stand':
-                        self.set_posture(Postures.STAND)
-                    case 'sit':
-                        self.set_posture(Postures.SIT_RELAX)
-                    case 'go-forward':
-                        self.move(Vector3(0.3, 0, 0))
-                    case 'go-back':
-                        self.move(Vector3(-0.3, 0, 0))
-            case 'left-hand':
-                match sub:
-                    case 'open':
-                        self.set_hand('left', False)
-                    case 'close':
-                        self.set_hand('left', True)
-            case 'right-hand':
-                match sub:
-                    case 'open':
-                        self.set_hand('right', False)
-                    case 'close':
-                        self.set_hand('right', True)
-            case 'leds':
-                try:
-                    match sub:
-                        case 'green':
-                            self.set_color(Colors.GREEN, float(args.get(2, 1)))
-                        case 'red':
-                            self.set_color(Colors.RED, float(args.get(2, 1)))
-                        case 'blue':
-                            self.set_color(Colors.BLUE, float(args.get(2, 1)))
-                        case 'off':
-                            self.set_color(Colors.OFF)
-                        case 'on':
-                            self.set_color(Colors.ON)
-                        case _:
-                            if not bool(re.match(r'^#([0-9a-fA-F]{6})$', sub)):
-                                print('Invalid color value. Expected HEX color code.')
-                                return
-                            self.set_color(sub, float(args.get(2, 1)))
-                except ValueError:
-                    print(f'Invalid input. Expected float: {args.get(2)}')
-            case _:
-                print(f'Invalid body part. Expected one of: bot, left-hand, right-hand, leds')
+        if body_part == 'bot':
+            if sub == 'stand':
+                self.set_posture(Postures.STAND)
+            elif sub == 'sit':
+                self.set_posture(Postures.SIT_RELAX)
+            elif sub == 'go-forward':
+                self.move(Vector3(0.3, 0, 0))
+            elif sub == 'go-back':
+                self.move(Vector3(-0.3, 0, 0))
+        elif body_part == 'left-hand':
+            if sub == 'open':
+                self.set_hand('left', False)
+            elif sub == 'close':
+                self.set_hand('left', True)
+        elif body_part == 'right-hand':
+            if sub == 'open':
+                self.set_hand('right', False)
+            elif sub == 'close':
+                self.set_hand('right', True)
+        elif body_part == 'leds':
+            try:
+                if sub == 'green':
+                    self.set_color(Colors.GREEN, float(args.get(2, 1)))
+                elif sub == 'red':
+                    self.set_color(Colors.RED, float(args.get(2, 1)))
+                elif sub == 'blue':
+                    self.set_color(Colors.BLUE, float(args.get(2, 1)))
+                elif sub == 'off':
+                    self.set_color(Colors.OFF)
+                elif sub == 'on':
+                    self.set_color(Colors.ON)
+                else:
+                    # TODO: Check if API accepts HEX colors
+                    if not bool(re.match(r'^#([0-9a-fA-F]{6})$', sub)):
+                        print('Invalid color value. Expected HEX color code.')
+                        return
+                    self.set_color(sub, float(args.get(2, 1)))
+            except ValueError:
+                print(f'Invalid input. Expected float: {args.get(2)}')
+        else:
+            print(f'Invalid body part. Expected one of: bot, left-hand, right-hand, leds')
 
     def __stt(self) -> Optional[str]:
         transcribed = self.stt.transcribe()
