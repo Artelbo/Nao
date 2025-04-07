@@ -16,8 +16,6 @@ from protolib.server import MultiConnectionServer, ProtoSocketWrapper
 from protolib.client import Session
 import queue
 
-import simpleaudio as sa
-
 try:
     import pyttsx3  # type: ignore
 except ImportError:
