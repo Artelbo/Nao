@@ -15,11 +15,15 @@ from .colors import FC, OPS
 import time
 import threading
 from thefuzz import fuzz
+import pyaudio
 
 try:
     import qi  # type: ignore
 except ImportError:
     pass
+
+
+GEMINI_MODEL = 'gemini-2.0-flash-lite'
 
 
 class NAO:
@@ -49,6 +53,14 @@ class NAO:
 
         # ---- services -----
         self.stt = STT(max_duration=21)
+        self.audio = pyaudio.PyAudio()
+        self.chunk_size = 1024
+        self.stream = self.audio.open(format=pyaudio.paInt16,
+                                      channels=1,
+                                      rate=16000,
+                                      input=True, )
+        #                             frames_per_buffer=self.chunk_size*2)
+        threading.Thread(target=self.__threaded_add_to_buffer, daemon=True).start()
 
         self.tts = self.session.service('ALTextToSpeech')
         self.tts.setLanguage('Italian')
@@ -122,6 +134,11 @@ class NAO:
             ),
             lambda args: self.system.reboot()
         )
+
+    def __threaded_add_to_buffer(self):
+        self.__logger.debug('Starting audio streaming')
+        while True:
+            self.stt.append_audio(self.stream.read(self.chunk_size, exception_on_overflow=False))
 
     def __shell_assistant(self, args: GList[str]) -> None:
         self.activation_string = args.get(0, self.activation_string)
@@ -219,7 +236,7 @@ class NAO:
         )
 
         response = self.ai_client.models.generate_content(
-            model='gemini-2.0-flash-lite',
+            model=GEMINI_MODEL,
             contents=r,
             config=types.GenerateContentConfig(
                 system_instruction=modified_system_prompt
@@ -238,8 +255,8 @@ class NAO:
     def __threaded_say(self, s: str) -> None:
         try:
             self.tts.say(s)
-        except RuntimeError:
-            pass
+        except RuntimeError as e:
+            self.__logger.debug(f'TTS error: {str(e)}')
 
     def say(self, s: str) -> None:
         threading.Thread(target=self.__threaded_say, args=(s,), daemon=True).start()
