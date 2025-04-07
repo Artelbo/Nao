@@ -26,3 +26,4 @@ logs
 *.log
 
 tests
+python39
