@@ -1,5 +1,5 @@
 from logging import Logger, getLogger
-from typing import Tuple, Annotated, Literal, Dict
+from typing import Tuple, Annotated, Literal, Dict, Union, Optional
 import paramiko
 import os
 from .stt import STT
@@ -207,7 +207,7 @@ class NAO:
             case _:
                 print(f'Invalid body part. Expected one of: bot, left-hand, right-hand, leds')
 
-    def __stt(self) -> str | None:
+    def __stt(self) -> Optional[str]:
         transcribed = self.stt.transcribe()
         if transcribed.successful:
             return transcribed.text
@@ -252,7 +252,7 @@ class NAO:
         self.tts.stopAll()
 
     def set_color(self,
-                  color: Colors | Color | str,
+                  color: Union[Colors, Color, str],
                   fade_duration: float = 0,
                   position: LedPosition = LedPosition.ALL) -> None:
         if isinstance(color, Color):

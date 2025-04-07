@@ -1,5 +1,5 @@
 from logging import Logger, getLogger
-from typing import Dict, Any
+from typing import Dict, Any, Union, Optional
 import os
 from .stt import STT
 from .builtin_shell import Shell, Command, GList
@@ -15,6 +15,8 @@ from thefuzz import fuzz
 from protolib.server import MultiConnectionServer, ProtoSocketWrapper
 from protolib.client import Session
 import queue
+
+import simpleaudio as sa
 
 try:
     import pyttsx3  # type: ignore
@@ -61,9 +63,9 @@ class VirtualNAO:
             lambda args: self.say(' '.join(args))
         )
 
-        self.stt = STT(max_duration=15, silence_after_speech_threshold=1)
+        self.stt = STT(max_duration=15, silence_after_speech_threshold=2)
         self.record_duration = 1
-        self.server = MultiConnectionServer('0.0.0.0', 7942, recv_amount=10240)
+        self.server = MultiConnectionServer('0.0.0.0', 7942, recv_amount=17408)
 
         @self.server.route('send/audio')
         def receive_data(headers: Dict[str, Any], payload: bytes, sock: ProtoSocketWrapper):
@@ -111,7 +113,7 @@ class VirtualNAO:
         self.stt.adjust_ambient(duration)
         self._mic_adjusted = True
 
-    def __stt(self) -> str | None:
+    def __stt(self) -> Optional[str]:
         transcribed = self.stt.transcribe()
         if transcribed.successful:
             return transcribed.text
@@ -154,7 +156,7 @@ class VirtualNAO:
     def stop(self):
         pass
 
-    def set_color(self, color: Colors | Color | str, fade_duration: float = 0):
+    def set_color(self, color: Union[Colors, Color, str], fade_duration: float = 0):
         if isinstance(color, Color):
             self.__logger.info(f"Led Color set to '{color.hex}' in {fade_duration}s")
         elif isinstance(color, Colors):
@@ -206,7 +208,7 @@ class VirtualNAO:
 class TestClient:
     def __init__(self, host: str = '127.0.0.1', port: int = 7942) -> None:
         self.session = Session((host, port))
-        self.chunk = 1024
+        self.chunk = 2048
         self.format = pyaudio.paInt16
         self.channels = 1
         self.sample_rate = 16000

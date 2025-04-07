@@ -87,6 +87,7 @@ class STT:
         if audio_chunk:
             timestamp = current_time
             self.audio_data.append((timestamp, audio_chunk))
+            self.__logger.debug(f'Added {len(audio_chunk)} bytes of data.')
 
             chunk_energy = self._calculate_chunk_energy(audio_chunk)
             if chunk_energy > self.recognizer.energy_threshold:

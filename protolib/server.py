@@ -2,7 +2,7 @@ import socket
 import logging
 import threading
 import time
-from typing import Any, Tuple, Callable, Dict
+from typing import Any, Tuple, Callable, Dict, Union, Optional
 from .proto3 import proto_decode, proto_encode, Encodings, Connection
 import hashlib
 
@@ -58,7 +58,8 @@ class SingleConnectionServer:
 
     def route(self, route: str):
         def decorator(
-                func: Callable[[Dict, bytes], Tuple[Dict, bytes, int]] | Callable[[Dict, bytes, ProtoSocketWrapper], None]):
+                func: Union[Callable[[Dict, bytes], Tuple[Dict, bytes, int]],
+                            Callable[[Dict, bytes, ProtoSocketWrapper], None]]):
             def wrapper(*args, **kwargs):
                 try:
                     return func(*args, **kwargs)
@@ -100,7 +101,7 @@ class SingleConnectionServer:
                 if connection == connection.CLOSE:
                     keep_alive = False
 
-                endpoint: str | None = headers.get('Endpoint', None)
+                endpoint: Optional[str] = headers.get('Endpoint', None)
                 if endpoint is None:
                     logging.warning('Missing endpoint in request headers')
                     response_data = proto_encode(**make_response(b'Missing Headers', 400))
@@ -134,7 +135,8 @@ class MultiConnectionServer:
 
     def route(self, route: str):
         def decorator(
-                func: Callable[[Dict, bytes], Tuple[Dict, bytes, int]] | Callable[[Dict, bytes, ProtoSocketWrapper], None]):
+                func: Union[Callable[[Dict, bytes], Tuple[Dict, bytes, int]],
+                            Callable[[Dict, bytes, ProtoSocketWrapper], None]]):
             def wrapper(*args, **kwargs):
                 try:
                     return func(*args, **kwargs)
@@ -166,7 +168,7 @@ class MultiConnectionServer:
             if connection == Connection.CLOSE:
                 keep_alive = False
 
-            endpoint: str | None = headers.get('Endpoint', None)
+            endpoint: Optional[str] = headers.get('Endpoint', None)
             if endpoint is None:
                 self.__logger.warning('Missing endpoint in request headers')
                 response_data = proto_encode(**make_response(b'Missing Headers', 400))

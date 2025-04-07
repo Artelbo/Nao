@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, List, Any, Dict, Tuple, Callable
+from typing import Optional, List, Any, Dict, Tuple, Callable, Union
 from logging import Logger, getLogger
 import sys
 import re
@@ -110,7 +110,7 @@ class Shell:
     def __stringify(tokens: List[Token]) -> List[str]:
         return [token.value for token in tokens]
 
-    def read(self) -> List[str] | None:
+    def read(self) -> Optional[List[str]]:
         try:
             line = input(f'{self.prefix} > ')
             if not line.strip():

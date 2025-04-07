@@ -6,7 +6,6 @@ from typing import (
     List,
     Tuple,
     Any,
-    override,
     TypeVar,
     TypedDict,
     NotRequired,
@@ -17,6 +16,7 @@ from typing import (
     get_origin,
     get_args,
     Union,
+    Optional
 )
 import argparse
 import json
@@ -34,18 +34,26 @@ T = TypeVar('T')
 TD = TypeVar('TD', bound=TypedDict)
 
 
-def setup_logging(log_config: str | os.PathLike) -> None:
+def setup_logging(log_config: Union[str, os.PathLike]) -> None:
     if not os.path.exists(log_config):
         raise FileNotFoundError(f'Log config file "{log_config}" not found')
 
     with open(log_config, 'r') as f:
         config = yaml.safe_load(f.read())
 
-    log_dir = os.path.dirname(config['handlers']['file']['filename'])
-    try:
-        os.makedirs(log_dir)
-    except OSError:
-        pass
+    if not config or 'handlers' not in config or 'file' not in config['handlers'] or 'filename' not in \
+            config['handlers']['file']:
+        logging.warning(
+            f"Log configuration in '{log_config}' is missing expected structure for directory creation. Skipping.")
+        log_dir = None
+    else:
+        log_dir = os.path.dirname(config['handlers']['file']['filename'])
+
+    if log_dir:
+        try:
+            os.makedirs(log_dir)
+        except OSError:
+            pass
 
     logging.config.dictConfig(config)
 
@@ -185,12 +193,12 @@ def create_parser_from_typeddict(desc: str, typeddict_cls: Type[TD]) -> argparse
     return parser
 
 
-def load_config(log_config: str | os.PathLike) -> Tuple[Config, argparse.ArgumentParser]:
+def load_config(log_config: Union[str, os.PathLike]) -> Tuple[Config, argparse.ArgumentParser]:
     if not os.path.exists(log_config):
         raise FileNotFoundError(f'Log config file "{log_config}" not found')
 
     with open(log_config, 'r') as f:
-        config: Dict[str, Any] | None = yaml.safe_load(f.read())
+        config: Optional[Dict[str, Any]] = yaml.safe_load(f.read())
 
     if config is None:
         raise ValueError('Config is empty')
@@ -205,7 +213,7 @@ def path_to_os_specific(path: str) -> str:
     return path.replace('/', os.sep).replace('\\', os.sep)
 
 
-def load_locale(locale: str | os.PathLike) -> Dict:
+def load_locale(locale: Union[str, os.PathLike]) -> Dict:
     if not os.path.exists(locale):
         raise FileNotFoundError(f'Locale file "{locale}" not found')
     with open(locale, 'r', encoding='utf-8') as f:
