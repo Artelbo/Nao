@@ -15,14 +15,10 @@ from thefuzz import fuzz
 from protolib.server import MultiConnectionServer, ProtoSocketWrapper
 from protolib.client import Session
 import queue
+import pyaudio
 
 try:
     import pyttsx3  # type: ignore
-except ImportError:
-    pass
-
-try:
-    import pyaudio  # type: ignore
 except ImportError:
     pass
 
@@ -61,18 +57,14 @@ class VirtualNAO:
             lambda args: self.say(' '.join(args))
         )
 
-        self.stt = STT(max_duration=15, silence_after_speech_threshold=2)
-        self.record_duration = 1
-        self.server = MultiConnectionServer('0.0.0.0', 7942, recv_amount=17408)
-
-        @self.server.route('send/audio')
-        def receive_data(headers: Dict[str, Any], payload: bytes, sock: ProtoSocketWrapper):
-            data, headers, _ = sock.receive()
-            self.__logger.debug(f'Received audio data: {len(data)}')
-            self.stt.append_audio(data)
-
-        self.__logger.info('Starting server...')
-        threading.Thread(target=self.server.start, daemon=True).start()
+        self.stt = STT(max_duration=15, silence_after_speech_threshold=1)
+        self.audio = pyaudio.PyAudio()
+        self.chunk_size = 1024
+        self.stream = self.audio.open(format=pyaudio.paInt16,
+                                      channels=1,
+                                      rate=16000,
+                                      input=True, )
+        threading.Thread(target=self.__threaded_add_to_buffer, daemon=True).start()
 
         self.tts = pyttsx3.init()
         self.voices = self.tts.getProperty('voices')
@@ -81,8 +73,10 @@ class VirtualNAO:
 
         self._mic_adjusted = False
 
-    def start_server(self) -> None:
-        threading.Thread(target=self.server.start, daemon=True).start()
+    def __threaded_add_to_buffer(self):
+        self.__logger.debug('Starting audio streaming')
+        while True:
+            self.stt.append_audio(self.stream.read(self.chunk_size, exception_on_overflow=False))
 
     def __shell_assistant(self, args: GList[str]) -> None:
         self.activation_string = args.get(0, self.activation_string)
@@ -201,40 +195,3 @@ class VirtualNAO:
 
     def close(self):
         pass
-
-
-class TestClient:
-    def __init__(self, host: str = '127.0.0.1', port: int = 7942) -> None:
-        self.session = Session((host, port))
-        self.chunk = 2048
-        self.format = pyaudio.paInt16
-        self.channels = 1
-        self.sample_rate = 16000
-
-        self.audio_queue = queue.Queue()
-        self.running = True
-
-        audio = pyaudio.PyAudio()
-        self.stream = audio.open(format=self.format,
-                                 channels=self.channels,
-                                 rate=self.sample_rate,
-                                 input=True,
-                                 frames_per_buffer=self.chunk)
-
-    def start(self):
-        threading.Thread(target=self.__record_audio, daemon=True).start()
-        self.session.stream(self.__stream_callback, 'send/audio')
-
-    def __record_audio(self):
-        while self.running:
-            data = self.stream.read(self.chunk, exception_on_overflow=False)
-            self.audio_queue.put(data)
-
-    def __stream_callback(self, sock: ProtoSocketWrapper):
-        while self.running:
-            data = self.audio_queue.get()
-            if data:
-                sock.send(data)
-
-            while self.audio_queue.qsize() < 5:
-                time.sleep(0.01)
