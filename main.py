@@ -49,7 +49,10 @@ args = parser.parse_args()
 config.update({k: v for k, v in vars(args).items() if v is not None})
 
 try:
-    locale.setlocale(locale.LC_TIME, config['locale'])
+    try:
+        locale.setlocale(locale.LC_TIME, config['locale'])
+    except Exception:
+        locale.setlocale(locale.LC_TIME, config['locale'].replace('-', '_'))
     locale_data = load_locale(os.path.join(os.getcwd(), 'locales', config['locale']+'.json'))
 except Exception:
     logger.critical(f"Could not set locale to '{config['locale']}'.")
