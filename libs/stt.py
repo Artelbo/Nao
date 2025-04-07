@@ -245,8 +245,8 @@ class STT:
         silence_duration = self.time_of_last_audio_chunk - self.time_of_last_speech
 
         if silence_duration < self.silence_after_speech_threshold:
-            self.__logger.info(f'Waiting for silence threshold ({self.silence_after_speech_threshold:.2f}s). '
-                               f'Current silence: {silence_duration:.2f}s')
+            # self.__logger.info(f'Waiting for silence threshold ({self.silence_after_speech_threshold:.2f}s). '
+            #                    f'Current silence: {silence_duration:.2f}s')
             return STTResponse(successful=False, text=f'Waiting for silence ({silence_duration:.2f}/{self.silence_after_speech_threshold:.2f}s)')
 
         self.__logger.info(f'Silence threshold met ({silence_duration:.2f}s >= {self.silence_after_speech_threshold:.2f}s). Starting transcription...')
