@@ -23,6 +23,9 @@ except ImportError:
     pass
 
 
+GEMINI_MODEL = 'gemini-2.0-flash'
+
+
 class VirtualNAO:
     def __init__(self, locale_data: Dict):
         self.__logger: Logger = getLogger('nao')
@@ -121,7 +124,7 @@ class VirtualNAO:
         )
 
         response = self.ai_client.models.generate_content(
-            model='gemini-2.0-flash-lite',
+            model=GEMINI_MODEL,
             contents=r,
             config=types.GenerateContentConfig(
                 system_instruction=modified_system_prompt

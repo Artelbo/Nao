@@ -23,7 +23,7 @@ except ImportError:
     pass
 
 
-GEMINI_MODEL = 'gemini-2.0-flash-lite'
+GEMINI_MODEL = 'gemini-2.0-flash'
 
 
 class NAO:
