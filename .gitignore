@@ -27,3 +27,13 @@ logs
 
 tests
 python39
+
+# Some python2 and test stuff
+protolib/client2.py
+protolib/helper.py
+protolib/helper_parser.py
+protolib/mitm.py
+protolib/package.json
+protolib/proto2.py
+protolib/test.py
+protolib/tests.py
