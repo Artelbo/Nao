@@ -39,7 +39,6 @@ loggers:
     level: 'DEBUG'
     handlers:
       - 'console'
-      - 'file'
     propagate: false
   ai:
     level: 'WARNING'
