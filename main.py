@@ -1,6 +1,6 @@
 import sys
 
-if sys.version_info < (3, ):
+if sys.version_info[0] < 3:
     print("This script can't run on python 2.x")
     sys.exit(1)
 
@@ -15,7 +15,7 @@ from libs.virtualnao import VirtualNAO, TestClient
 
 print(f'Running on python ({".".join(map(str, sys.version_info))})')
 
-if sys.version_info <= (3, 9):
+if sys.version_info[0:2] <= (3, 9):
     from libs.config_py39compatible import setup_logging, load_config, load_locale
 else:
     from libs.config import setup_logging, load_config, load_locale
