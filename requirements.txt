@@ -1,14 +1,14 @@
 google-genai
 SpeechRecognition
 thefuzz
-pyaudio
+pyaudio ; sys_platform == 'win32'
 paramiko
 audioop-lts ; python_version >= '3.13'
 pyttsx3 ; sys_platform == 'win32'
 qi ; sys_platform == 'linux'
-pyreadline3
+pyreadline3 ; sys_platform != 'linux'  # TODO: check if needed
 dotenv
-flask
-hypercorn
+flask ; sys_platform == 'win32'
+hypercorn ; sys_platform == 'win32'
 pyyaml
 git+https://github.com/dsc/bunch.git  # bunch
