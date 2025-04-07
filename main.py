@@ -35,7 +35,7 @@ parser.add_argument('mode',
 parser.add_argument('-a', '--address',
                     help='Bot IPv4 address.',
                     type=str,
-                    default='172.16.222.213')
+                    default='127.0.0.1')
 parser.add_argument('-p', '--port',
                     help='Bot proto port.',
                     type=int,
@@ -58,12 +58,17 @@ except Exception:
 try:
     load_dotenv('.env')
 except FileNotFoundError:
-    logger.warning('.env not found')
+    logger.warning('.env not found, creating default one')
+    with open('.env', 'w') as f:
+        f.write('GEMINI_API_KEY=')
+
+if os.getenv('GEMINI_API_KEY') is None or os.getenv('GEMINI_API_KEY').strip() == '':
+    logger.critical('Missing GEMINI api key')
+    sys.exit(1)
 
 if not os.path.exists('.history'):
     with open('.history', 'w') as f:
-        logger.warning('.history file not found, creating...')
-
+        logger.warning('.history file not found, creating one')
 
 if __name__ == '__main__':
     BOT: Tuple[str, int] = config['address'], config['port']
