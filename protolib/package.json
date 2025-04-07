@@ -1,5 +1,0 @@
-{
-  "scripts": {
-    "test": "python(current): <test.py> run_tests"
-  }
-}

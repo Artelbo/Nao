@@ -1,0 +1,65 @@
+version: 1
+disable_existing_logs: false
+
+formatters:
+  standard:
+    format: '%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) %(name)s: %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+  simple:
+    format: '[%(levelname)s] %(message)s'
+    log_colors:
+      DEBUG: 'cyan'
+      INFO: 'green'
+      WARNING: 'yellow'
+      ERROR: 'red'
+      CRITICAL: 'red,bg_white'
+
+handlers:
+  console:
+    level: 'INFO'
+    class: 'logging.StreamHandler'
+    formatter: 'simple'
+    stream: 'ext://sys.stdout'
+  file:
+    level: 'DEBUG'
+    class: 'logging.FileHandler'
+    filename: 'logs/main.log'
+    mode: 'w'
+    formatter: 'standard'
+
+loggers:
+  main:
+    level: 'INFO'
+    handlers:
+      - 'console'
+      - 'file'
+    propagate: false
+  stt:
+    level: 'DEBUG'
+    handlers:
+      - 'console'
+      - 'file'
+    propagate: false
+  ai:
+    level: 'WARNING'
+    handlers:
+      - 'file'
+    propagate: false
+  shell:
+    level: 'WARNING'
+    handlers:
+      - 'file'
+    propagate: false
+  server:
+    level: 'DEBUG'
+    handlers:
+      - 'file'
+    propagate: false
+
+
+root:
+  level: 'DEBUG'
+  handlers:
+    - 'console'
+    - 'file'

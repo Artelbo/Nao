@@ -1,37 +1,15 @@
-certifi
-cffi
-charset-normalizer
-colorama
-filelock
-fsspec
-idna
-Jinja2
-llvmlite
-MarkupSafe
-more-itertools
-mpmath
-networkx
-numba
-numpy
-openai-whisper @ git+https://github.com/openai/whisper.git@517a43ecd132a2089d85f4ebc044728a71d49f6e
-orjson
-pillow
-PyAudio
-pycparser
-regex
-requests
-setuptools
-sounddevice
-soundfile
+google-genai
 SpeechRecognition
-srt
-standard-aifc
-standard-chunk
-sympy
-tiktoken
-tqdm
-typing_extensions
-urllib3
-vosk
-webrtcvad
-websockets
+thefuzz
+pyaudio ; sys_platform == 'win32'
+paramiko
+audioop-lts ; python_version >= '3.13'
+pyttsx3 ; sys_platform == 'win32'
+qi ; sys_platform == 'linux'
+pyreadline3 ; sys_platform != 'linux'  # TODO: check if needed
+dotenv
+flask ; sys_platform == 'win32'
+hypercorn ; sys_platform == 'win32'
+pyyaml
+git+https://github.com/dsc/bunch.git  # bunch
+orjson

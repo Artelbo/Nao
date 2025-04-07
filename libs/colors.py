@@ -6,10 +6,7 @@ class Options:
     BLINK = '\x1b[5m'
     REVERSE = '\x1b[7m'
     HIDDEN = '\x1b[8m'
-
-
-class OPS(Options):
-    pass
+OPS = Options
 
 
 class ForegroundColors:
@@ -35,10 +32,7 @@ class ForegroundColors:
 
     DARK_CYAN = '\x1b[36m'
     LIGHT_CYAN = '\x1b[96m'
-
-
-class FC(ForegroundColors):
-    pass
+FC = ForegroundColors
 
 
 class BackgroundColors:
@@ -64,7 +58,4 @@ class BackgroundColors:
 
     DARK_CYAN = '\x1b[46m'
     LIGHT_CYAN = '\x1b[106m'
-
-
-class BC(BackgroundColors):
-    pass
+BC = BackgroundColors

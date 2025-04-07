@@ -1,102 +1,97 @@
-from google.genai import types
-from typing import List, Dict, Any
-from stt import STT, SimpleService, Services
-from stt.base import Languages
-import speech_recognition as sr
-from thefuzz import fuzz
+import sys
+
+if sys.version_info[0] < 3:
+    print("This script can't run on python 2.x")
+    sys.exit(1)
+
+from typing import Tuple
 import os
-from google import genai
-import textwrap
-import time
+import logging
 import locale
+from dotenv import load_dotenv
+import threading
+from libs.nao import NAO
+from libs.virtualnao import VirtualNAO
 
-locale.setlocale(locale.LC_TIME, Languages.ITALIAN_ITALY.value.replace('-', '_'))
+print(f'Running on python ({".".join(map(str, sys.version_info))})')
 
-start = 'leonardo'
-client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
-system_prompt = '''
-Sei Nao, un robot che risponde grazie a Google Gemini, sei stato programmato grazie a Python e la mente di 5 geni.
-Le risposte che fornisci devono essere in testo semplice, senza alcuna formattazione stilistica. Evita l'uso di grassetto, corsivo, sottolineato, elenchi puntati o numerati, parentesi, o qualsiasi altro tipo di formattazione.
-Fornisci risposte chiare e concise, esclusivamente in testo puro.
-Le risposte devono essere brevi e riassuntive.
-Ricorda di riferiti a me (io) come tu, sempre, eccetto quando puoi sott'intenderlo.
-Se ti viene posta una domanda non pertinente puoi rispondere con: "Non ho capito, potresti ripetere?"
-Ora locale: {ora}
-Data locale: {data}
-
-Conversazioni Precedenti:
----
-{memoria}
----
-'''
-
-class Memory:
-    def __init__(self, capacity=5):
-        self.capacity = capacity
-        self.memory = []
-
-    def add(self, q, a) -> None:
-        self.memory.append({'question': q, 'answer': a})
-        if len(self.memory) > self.capacity:
-            self.memory.pop(0)
-
-    def get_memory_string(self) -> str:
-        return '\n\n'.join([f'Domanda: {item['question']}\nRisposta: {item['answer']}' for item in self.memory])
-
-memory = Memory()
-
-def answer(r: str) -> None:
-    print(f' -> {r}')
-
-    memory_string = memory.get_memory_string()
-
-    # Include memory in the system prompt
-    modified_system_prompt = system_prompt.format(
-        ora=time.strftime('%H:%M:%S'),
-        data=time.strftime('%A, %d %B %Y'),
-        memoria=memory_string
-    )
+if sys.version_info[0:2] <= (3, 9):
+    from libs.config_py39compatible import setup_logging, load_config, load_locale
+else:
+    from libs.config import setup_logging, load_config, load_locale
 
 
-    response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=r,
-        config=types.GenerateContentConfig(
-            system_instruction=modified_system_prompt
-        )
-    )
+# Initial config
+setup_logging('log.yaml')
+logger = logging.getLogger('main')
 
-    response_text = response.text
-    print('\n'.join([f' <- {x}' for x in textwrap.wrap(response_text, width=50, break_long_words=False)]),
-          end='\n\n')
+# Config
+config, parser = load_config('config.yaml')
+# -- additional parser arguments
+parser.add_argument('mode',
+                    help='Specify run mode.',
+                    type=str,
+                    choices=['deploy', 'dev'])
+parser.add_argument('-a', '--address',
+                    help='Bot IPv4 address.',
+                    type=str,
+                    default='127.0.0.1')
+parser.add_argument('-p', '--port',
+                    help='Bot proto port.',
+                    type=int,
+                    default=9559)
+parser.add_argument('-s', '--ssh',
+                    help='Bot SSH user and password.',
+                    type=str,
+                    default='nao:nao')
+# --
+args = parser.parse_args()
+config.update({k: v for k, v in vars(args).items() if v is not None})
 
-    memory.add(r, response_text)
+try:
+    locale.setlocale(locale.LC_TIME, config['locale'])
+    locale_data = load_locale(os.path.join(os.getcwd(), 'locales', config['locale']+'.json'))
+except Exception:
+    logger.critical(f"Could not set locale to '{config['locale']}'.")
+    exit(1)
 
-with sr.Microphone() as source:
-    print('Loading, please wait...')
-    stt = STT(source, SimpleService.BestOnline)
-    print('Adjusting for ambient noise')
-    stt.adjust_ambient()
-    print('Ready to start speaking...')
-    while True:
-        for text in stt.transcribe(None):
-            t = text.lower().replace('ehi', 'hey', 1)
-            # print(f'[] {t}')
-            if not (fuzz.ratio(t[0:len(start)], start.lower()) > 50):
-                continue
-            t = t[len(start)+1:].strip()
-            if t.startswith(tuple(',.;:')):
-                t = t[1:]
-                t = t.strip()
-            if len(t) <= 0:
-                break
-            answer(t)
+try:
+    load_dotenv('.env')
+except FileNotFoundError:
+    logger.warning('.env not found, creating default one')
+    with open('.env', 'w') as f:
+        f.write('GEMINI_API_KEY=')
 
-        print('Si?')
-        for text in stt.transcribe(None):
-            t = text.lower()
-            if len(t.strip()) <= 0:
-                continue
+if os.getenv('GEMINI_API_KEY') is None or os.getenv('GEMINI_API_KEY').strip() == '':
+    logger.critical('Missing GEMINI api key')
+    sys.exit(1)
 
-            answer(t)
-            break
+if not os.path.exists('.history'):
+    with open('.history', 'w') as f:
+        logger.warning('.history file not found, creating one')
+
+if __name__ == '__main__':
+    BOT: Tuple[str, int] = config['address'], config['port']
+    if len(config['ssh'].split(':', 1)) <= 1:
+        print('Invalid --ssh value')
+        sys.exit(1)
+    SSH_USER, SSH_PASS = config['ssh'].split(':', 1)
+    BOT_SSH: Tuple[str, str] = SSH_USER, SSH_PASS
+    del SSH_USER, SSH_PASS
+
+    if config['mode'] == 'deploy':
+        try:
+            nao = NAO(BOT, BOT_SSH, locale_data=locale_data)
+        except RuntimeError:
+            sys.exit(1)
+        nao.start_shell()
+        nao.close()
+        sys.exit(0)
+    elif config['mode'] == 'dev':
+        nao = VirtualNAO(locale_data=locale_data)
+        nao.start_shell()
+        nao.close()
+        sys.exit(0)
+    else:
+        logger.critical('Invalid mode')
+        sys.exit(1)

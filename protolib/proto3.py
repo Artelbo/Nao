@@ -2,7 +2,7 @@ import inspect
 import time
 from enum import Enum
 from dataclasses import dataclass, is_dataclass, fields
-from typing import List, Union, TypeVar, Annotated, get_type_hints, Any, Tuple, Dict
+from typing import List, Union, TypeVar, Annotated, get_type_hints, Any, Tuple, Dict, Optional
 import struct
 import orjson
 import gzip
@@ -138,7 +138,7 @@ class HeaderValueType(Enum):
 @dataclass
 class Header:
     name: Annotated[str, StrMaxLength(255)]  # 1 byte
-    value: int | float | str | dict[str, Any] | list[Any]  # n bytes
+    value: Union[int, float, str, dict[str, Any], list[Any]]  # n bytes
 
     def __encode_value(self, precise: bool) -> Tuple[HeaderValueType, bytes]:
         if isinstance(self.value, int):
@@ -225,7 +225,7 @@ class Connection(Enum):
     DUPLEX: str = 'duplex'
 
 
-def proto_encode(headers: Dict[str, int | float | str | dict[str, Any] | list[Any]],
+def proto_encode(headers: Dict[str, Union[int, float, str, dict[str, Any], list[Any]]],
                  payload: bytes,
                  encoding: Encodings = Encodings.PLAIN,
                  precise_floats: bool = False) -> bytes:
