@@ -4,9 +4,13 @@ from logging import Logger, getLogger
 import sys
 import re
 import os
-import readline
 import atexit
 import time
+
+try:
+    import readline  # type: ignore
+except ImportError:
+    pass
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,9 @@ class DefaultDict(dict):
 class Shell:
     def __init__(self, prefix: str = 'shell'):
         self.__logger: Logger = getLogger('shell')
+        self.__readline_available = 'readline' in globals()
+        if not self.__readline_available:
+            self.__logger.warning('readline is not available, tab completion is not available')
 
         if not isinstance(prefix, str):
             raise ValueError('prefix must be a string.')
@@ -225,6 +232,9 @@ class Shell:
             print('Error: Invalid wait time. Expected a float.')
 
     def __completer(self, text: str, state: int) -> Optional[str]:
+        if not self.__readline_available:
+            return None
+
         line = readline.get_line_buffer()
         words = line.lstrip().split()
         is_command_pos = (line.endswith(' ') or not words or (len(words) == 1 and not line.endswith(' ')))
@@ -239,6 +249,9 @@ class Shell:
              return None
 
     def __setup_readline(self):
+        if not self.__readline_available:
+            return
+
         readline.read_history_file('../.history')
         atexit.register(readline.write_history_file, '../.history')
 
