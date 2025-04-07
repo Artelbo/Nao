@@ -13,7 +13,7 @@ import threading
 from libs.nao import NAO
 from libs.virtualnao import VirtualNAO, TestClient
 
-print(f'Running on python ({".".join(sys.version_info)})')
+print(f'Running on python ({".".join(map(str, sys.version_info))})')
 
 if sys.version_info <= (3, 9):
     from libs.config_py39compatible import setup_logging, load_config, load_locale
