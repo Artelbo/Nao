@@ -11,7 +11,7 @@ import locale
 from dotenv import load_dotenv
 import threading
 from libs.nao import NAO
-from libs.virtualnao import VirtualNAO, TestClient
+from libs.virtualnao import VirtualNAO
 
 print(f'Running on python ({".".join(map(str, sys.version_info))})')
 
@@ -89,13 +89,8 @@ if __name__ == '__main__':
         sys.exit(0)
     elif config['mode'] == 'dev':
         nao = VirtualNAO(locale_data=locale_data)
-
-        client = TestClient()
-        threading.Thread(target=client.start, daemon=True).start()
-
         nao.start_shell()
         nao.close()
-
         sys.exit(0)
     else:
         logger.critical('Invalid mode')
